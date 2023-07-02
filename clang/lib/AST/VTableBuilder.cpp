@@ -1300,6 +1300,7 @@ public:
 
     LayoutVTable();
 
+    //this is where dumping is.
     if (Context.getLangOpts().DumpVTableLayouts)
       dumpLayout(llvm::outs());
   }
@@ -2700,6 +2701,9 @@ CodeWarriorVTableContext::computeVTableRelatedInformation(
   // If we don't have the vbase information for this class, insert it.
   // getVirtualBaseOffsetOffset will compute it separately without computing
   // the rest of the vtable related information.
+
+  /// Retrieves the number of virtual base classes of this class.
+
   if (!RD->getNumVBases())
     return;
 
@@ -4452,6 +4456,8 @@ void CodeWarriorVtableBuilder::AddMethods(
   //   unless it overrides a function from the primary base, and conversion
   //   between their return types does not require an adjustment.
 
+  //current base we're adding methods for. Not necessarily actually a base class,
+  // e.g. Derived derives from NotEmpty, first time this is called with RD == Derived
   const CXXRecordDecl *RD = Base.getBase();
 
   const ASTRecordLayout &Layout = Context.getASTRecordLayout(RD);
@@ -4495,6 +4501,7 @@ void CodeWarriorVtableBuilder::AddMethods(
   llvm::SmallVector<const CXXMethodDecl*, 4> NewImplicitVirtualFunctions;
 
   // Now go through all virtual member functions and add them.
+  //Actual code that adds functions to vtable
   for (const auto *MD : RD->methods()) {
     if (!ItaniumVTableContext::hasVtableSlot(MD))
       continue;
@@ -4580,6 +4587,8 @@ void CodeWarriorVtableBuilder::AddMethods(
       });
   NewVirtualFunctions.append(NewImplicitVirtualFunctions.begin(),
                              NewImplicitVirtualFunctions.end());
+
+  //This relevant - where we handle non-primary base vtables.
   if (RD->getNumBases() > 1) {
     LayoutSecondaryVTables(Base, BaseIsMorallyVirtual,
                             BaseOffsetInLayoutClass);
@@ -4626,6 +4635,10 @@ void CodeWarriorVtableBuilder::AddMethods(
 }
 
 void CodeWarriorVtableBuilder::LayoutVTable() {
+
+  //question: what components are added here (for Derived)?
+
+
   LayoutPrimaryAndSecondaryVTables(BaseSubobject(MostDerivedClass,
                                                  CharUnits::Zero()),
                                    /*BaseIsMorallyVirtual=*/false,
@@ -4656,7 +4669,10 @@ void CodeWarriorVtableBuilder::LayoutPrimaryAndSecondaryVTables(
   unsigned VTableIndex = Components.size();
   VTableIndices.push_back(VTableIndex);
   VTableIndicesTemp.push_back(VTableIndex);
+
   // Add vcall and vbase offsets for this vtable.
+  // Note: These are for virtual inheritance. Out of scope ATM
+  // https://shaharmike.com/cpp/vtable-part3/
   VCallAndVBaseOffsetBuilder Builder(
       VTables, MostDerivedClass, LayoutClass, &Overriders, Base,
       BaseIsVirtualInLayoutClass, OffsetInLayoutClass);
@@ -4675,6 +4691,7 @@ void CodeWarriorVtableBuilder::LayoutPrimaryAndSecondaryVTables(
   if (Base.getBase() == MostDerivedClass)
     VBaseOffsetOffsets = Builder.getVBaseOffsetOffsets();
 
+  //ok here's RTTI - very relevant
   // Add the RTTI.
   Components.push_back(VTableComponent::MakeRTTI(MostDerivedClass));
 
@@ -4685,7 +4702,9 @@ void CodeWarriorVtableBuilder::LayoutPrimaryAndSecondaryVTables(
   uint64_t AddressPoint = Components.size();
 
   // Now go through all virtual member functions and add them.
+  // Here's where virtual methods are added to vtable
   PrimaryBasesSetVectorTy PrimaryBases;
+  //This recursively calls LayoutPrimaryAndSecondaryVTables
   AddMethods(Base, OffsetInLayoutClass,
              Base.getBase(), OffsetInLayoutClass,
              PrimaryBases, BaseIsMorallyVirtual);
@@ -4897,6 +4916,7 @@ void CodeWarriorVtableBuilder::LayoutVTablesForVirtualBases(
 }
 
 /// dumpLayout - Dump the vtable layout.
+//dump
 void CodeWarriorVtableBuilder::dumpLayout(raw_ostream &Out) {
   // FIXME: write more tests that actually use the dumpLayout output to prevent
   // ItaniumVTableBuilder regressions.

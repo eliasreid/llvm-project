@@ -879,7 +879,10 @@ void ItaniumRecordLayoutBuilder::DeterminePrimaryBase(const CXXRecordDecl *RD) {
 
     const CXXRecordDecl *Base = I.getType()->getAsCXXRecordDecl();
 
-    if (Base->isDynamicClass()) {
+    //set primary base whether or not it actually has vritual functions.
+    //Not sure if this is the right fix
+//    if (Base->isDynamicClass()) {
+    if (true) {
       // We found it.
       PrimaryBase = Base;
       PrimaryBaseIsVirtual = false;
@@ -1463,6 +1466,8 @@ void ItaniumRecordLayoutBuilder::LayoutFields(const RecordDecl *D) {
     }
   } else {
     bool HasEmittedVtable = false;
+
+    //What are we looping over?
     for (auto I = D->decls_begin(), End = D->decls_end(); I != End; ++I) {
       auto Next(I);
 
@@ -1481,11 +1486,22 @@ void ItaniumRecordLayoutBuilder::LayoutFields(const RecordDecl *D) {
         }
       }
 
+      //relevant changes here for prior vtable work
+
+      //old code: if (HasOwnVFPtr && !HasEmittedVtable) {
+      // if hasownVFPTR (basically just are we dynamic or inherited from dynamic)
+      // so this part of the condition is same.
+
+      //Comment above wrong? hasownVFPTR false for Derived? (maybe just first pass?)
+
+
       if (HasEmittedVtable)
         continue;
 
       if (HasOwnVFPtr) {
         const CXXMethodDecl *MD = dyn_cast<CXXMethodDecl>(*I);
+
+        // is virtual and not consteval
         if (MD && ItaniumVTableContext::hasVtableSlot(MD)) {
           {
             CharUnits PtrWidth = Context.toCharUnitsFromBits(
@@ -1505,6 +1521,10 @@ void ItaniumRecordLayoutBuilder::LayoutFields(const RecordDecl *D) {
           HasEmittedVtable = true;
           continue;
         }
+        //this is changed part
+
+        /// PrimaryBase - the primary base class (if one exists) of the class
+        /// we're laying out.
       } else if (PrimaryBase) {
         VPtrOffset = Context.getASTRecordLayout(PrimaryBase).getVPtrOffset();
         HasEmittedVtable = true;
